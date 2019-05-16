@@ -23,12 +23,6 @@ import torch.utils.model_zoo as model_zoo
 from torch.nn import init
 import torch
 
-__all__ = ['xception']
-
-model_urls = {
-    'xception': 'https://www.dropbox.com/s/1hplpzet9d7dv29/xception-c0a72b38.pth.tar?dl=1'
-}
-
 
 class SeparableConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False):
@@ -96,10 +90,13 @@ class Block(nn.Module):
         return x
 
 
-class Xception(nn.Module):
+class XceptionA(nn.Module):
     """
     Xception optimized for the ImageNet dataset, as specified in
     https://arxiv.org/pdf/1610.02357.pdf
+
+    Modified Xception A architecture, as specified in
+    https://arxiv.org/pdf/1904.02216.pdf
     """
 
     def __init__(self, num_classes=1000):
@@ -107,42 +104,31 @@ class Xception(nn.Module):
         Args:
             num_classes: number of classes
         """
-        super(Xception, self).__init__()
+        super(XceptionA, self).__init__()
 
         self.num_classes = num_classes
 
-        self.conv1 = nn.Conv2d(3, 32, 3, 2, 0, bias=False)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.relu = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(3, 8, 3, 2, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(8)
 
-        self.conv2 = nn.Conv2d(32, 64, 3, bias=False)
-        self.bn2 = nn.BatchNorm2d(64)
-        # do relu here
+        self.enc2_1 = Block(8, 12, 4, 1, start_with_relu=True, grow_first=True)
+        self.enc2_2 = Block(12, 12, 4, 1, start_with_relu=True, grow_first=True)
+        self.enc2_3 = Block(12, 48, 4, 2, start_with_relu=True, grow_first=True)
+        self.enc2 = nn.Sequential(self.enc2_1, self.enc2_2, self.enc2_3)
 
-        self.block1 = Block(64, 128, 2, 2, start_with_relu=False, grow_first=True)
-        self.block2 = Block(128, 256, 2, 2, start_with_relu=True, grow_first=True)
-        self.block3 = Block(256, 728, 2, 2, start_with_relu=True, grow_first=True)
+        self.enc3_1 = Block(48, 24, 6, 1, start_with_relu=True, grow_first=True)
+        self.enc3_2 = Block(24, 24, 6, 1, start_with_relu=True, grow_first=True)
+        self.enc3_3 = Block(24, 96, 6, 2, start_with_relu=True, grow_first=True)
+        self.enc3 = nn.Sequential(self.enc3_1, self.enc3_2, self.enc3_3)
 
-        self.block4 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block5 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block6 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block7 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
+        self.enc4_1 = Block(96, 48, 4, 1, start_with_relu=True, grow_first=True)
+        self.enc4_2 = Block(48, 48, 4, 1, start_with_relu=True, grow_first=True)
+        self.enc4_3 = Block(48, 192, 4, 2, start_with_relu=True, grow_first=True)
+        self.enc4 = nn.Sequential(self.enc4_1, self.enc4_2, self.enc4_3)
 
-        self.block8 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block9 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block10 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-        self.block11 = Block(728, 728, 3, 1, start_with_relu=True, grow_first=True)
-
-        self.block12 = Block(728, 1024, 2, 2, start_with_relu=True, grow_first=False)
-
-        self.conv3 = SeparableConv2d(1024, 1536, 3, 1, 1)
-        self.bn3 = nn.BatchNorm2d(1536)
-
-        # do relu here
-        self.conv4 = SeparableConv2d(1536, 2048, 3, 1, 1)
-        self.bn4 = nn.BatchNorm2d(2048)
-
-        self.fc = nn.Linear(2048, num_classes)
+        self.pooling = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(192, num_classes)
+        self.fca = nn.Conv1d(num_classes, 192, 1)
 
         # ------- init weights --------
         for m in self.modules():
@@ -157,46 +143,26 @@ class Xception(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
-        x = self.relu(x)
 
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.relu(x)
-
-        x = self.block1(x)
-        x = self.block2(x)
-        x = self.block3(x)
-        x = self.block4(x)
-        x = self.block5(x)
-        x = self.block6(x)
-        x = self.block7(x)
-        x = self.block8(x)
-        x = self.block9(x)
-        x = self.block10(x)
-        x = self.block11(x)
-        x = self.block12(x)
-
-        x = self.conv3(x)
-        x = self.bn3(x)
-        x = self.relu(x)
-
-        x = self.conv4(x)
-        x = self.bn4(x)
-        x = self.relu(x)
-
-        x = F.adaptive_avg_pool2d(x, (1, 1))
+        enc2 = self.enc2(x)
+        enc3 = self.enc3(enc2)
+        enc4 = self.enc4(enc3)
+        x = self.pooling(enc4)
         x = x.view(x.size(0), -1)
-        x = self.fc(x)
+        fc = self.fc(x)
+        fca = self.fca(fc)
+        #fca = torch.bmm(fc, fca)
 
-        return x
+        return x, enc2, enc3, enc4, fc, fca
 
 
-def xception(pretrained=False, **kwargs):
+def backbone(pretrained=False, **kwargs):
     """
     Construct Xception.
     """
 
-    model = Xception(**kwargs)
+    model = XceptionA(**kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['xception']))
+        # model.load_state_dict(model_zoo.load_url(model_urls['xception']))
+        pass
     return model
