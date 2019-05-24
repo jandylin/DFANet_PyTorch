@@ -17,11 +17,10 @@ normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
 The resize parameter of the validation transform should be 333, and make sure to center crop at 299x299
 """
 import math
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils.model_zoo as model_zoo
-from torch.nn import init
 import torch
+import torch.nn as nn
+
+model_url = './checkpoints/XceptionA_best.pth.tar'
 
 
 class SeparableConv2d(nn.Module):
@@ -128,7 +127,7 @@ class XceptionA(nn.Module):
 
         self.pooling = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(192, num_classes)
-        self.fca = nn.Conv1d(num_classes, 192, 1)
+        self.fca = nn.Conv2d(num_classes, 192, 1)
 
         # ------- init weights --------
         for m in self.modules():
@@ -147,13 +146,12 @@ class XceptionA(nn.Module):
         enc2 = self.enc2(x)
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
-        x = self.pooling(enc4)
-        x = x.view(x.size(0), -1)
-        fc = self.fc(x)
-        fca = self.fca(fc)
-        #fca = torch.bmm(fc, fca)
+        pool = self.pooling(enc4)
+        fc = self.fc(pool.view(pool.size(0), -1))
+        fca = self.fca(fc.view(fc.size(0), -1, 1, 1))
+        fca = enc4 * fca
 
-        return x, enc2, enc3, enc4, fc, fca
+        return enc2, enc3, enc4, fc, fca
 
 
 def backbone(pretrained=False, **kwargs):
@@ -163,6 +161,5 @@ def backbone(pretrained=False, **kwargs):
 
     model = XceptionA(**kwargs)
     if pretrained:
-        # model.load_state_dict(model_zoo.load_url(model_urls['xception']))
-        pass
+        model.load_state_dict(torch.load(model_url))
     return model
