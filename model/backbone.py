@@ -162,9 +162,9 @@ class XceptionA(nn.Module):
 
     def forward_concat(self, fca_concat, enc2_concat, enc3_concat, enc4_concat):
         """For second and third stage."""
-        enc2 = self.enc2(self.enc2_conv(torch.cat(fca_concat, enc2_concat)))
-        enc3 = self.enc3(self.enc3_conv(torch.cat(enc2, enc3_concat)))
-        enc4 = self.enc3(self.enc4_conv(torch.cat(enc3, enc4_concat)))
+        enc2 = self.enc2(self.enc2_conv(torch.cat((fca_concat, enc2_concat), dim=1)))
+        enc3 = self.enc3(self.enc3_conv(torch.cat((enc2, enc3_concat), dim=1)))
+        enc4 = self.enc4(self.enc4_conv(torch.cat((enc3, enc4_concat), dim=1)))
         pool = self.pooling(enc4)
         fc = self.fc(pool.view(pool.size(0), -1))
         fca = self.fca(fc.view(fc.size(0), -1, 1, 1))
