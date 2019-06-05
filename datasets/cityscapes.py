@@ -32,7 +32,7 @@ def make_dataset(quality, mode):
 
     quality = 'gtFine' if quality == 'fine' else 'gtCoarse'
     images_dir = os.path.join(root, 'leftImg8bit', mode)
-    targets_dir = os.path.join(root, mode, mode)
+    targets_dir = os.path.join(root, quality, mode)
 
     items = []
     for city in os.listdir(images_dir):
