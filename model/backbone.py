@@ -180,5 +180,16 @@ def backbone(pretrained=False, **kwargs):
 
     model = XceptionA(**kwargs)
     if pretrained:
-        model.load_state_dict(torch.load(model_url))
+        from collections import OrderedDict
+        state_dict = torch.load(model_url)
+        new_state_dict = OrderedDict()
+
+        for k, v in state_dict.items():
+            if 'module' not in k:
+                k = 'module.' + k
+            else:
+                k = k.replace('features.module.', 'module.features.')
+            new_state_dict[k] = v
+
+        model.load_state_dict(new_state_dict)
     return model
