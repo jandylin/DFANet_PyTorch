@@ -9,6 +9,7 @@ from torch.utils import data
 num_classes = 19
 ignore_label = 255
 root = '/fastdata/cityscapes'
+images_dir = '/fastdata/cityscapes/leftImg8bit'
 
 palette = [128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153, 153, 153, 153, 250, 170, 30,
            220, 220, 0, 107, 142, 35, 152, 251, 152, 70, 130, 180, 220, 20, 60, 255, 0, 0, 0, 0, 142, 0, 0, 70,
@@ -27,26 +28,21 @@ def colorize_mask(mask):
 
 
 def make_dataset(quality, mode):
-    assert (quality == 'fine' and mode in ['train', 'val']) or \
-           (quality == 'coarse' and mode in ['train', 'train_extra', 'val'])
+    assert (quality == 'fine' and mode in ['train', 'val'])
 
-    if quality == 'coarse':
-        img_dir_name = 'leftImg8bit_trainextra' if mode == 'train_extra' else 'leftImg8bit_trainvaltest'
-        mask_path = os.path.join(root, 'gtCoarse', 'gtCoarse', mode)
-        mask_postfix = '_gtCoarse_labelIds.png'
-    else:
-        img_dir_name = 'leftImg8bit_trainvaltest'
-        mask_path = os.path.join(root, 'gtFine_trainvaltest', 'gtFine', mode)
-        mask_postfix = '_gtFine_labelIds.png'
-    img_path = os.path.join(root, img_dir_name, 'leftImg8bit', mode)
-    assert os.listdir(img_path) == os.listdir(mask_path)
+    quality = 'gtFine' if quality == 'fine' else 'gtCoarse'
+    images_dir = os.path.join(root, 'leftImg8bit', mode)
+    targets_dir = os.path.join(root, mode, mode)
+
     items = []
-    categories = os.listdir(img_path)
-    for c in categories:
-        c_items = [name.split('_leftImg8bit.png')[0] for name in os.listdir(os.path.join(img_path, c))]
-        for it in c_items:
-            item = (os.path.join(img_path, c, it + '_leftImg8bit.png'), os.path.join(mask_path, c, it + mask_postfix))
-            items.append(item)
+    for city in os.listdir(images_dir):
+        img_dir = os.path.join(images_dir, city)
+        target_dir = os.path.join(targets_dir, city)
+        for file_name in os.listdir(img_dir):
+            target_name = '{}_{}'.format(file_name.split('_leftImg8bit')[0],
+                                         '{}_labelIds.png'.format(quality))
+
+            items.append((os.path.join(img_dir, file_name), os.path.join(target_dir, target_name)))
     return items
 
 
