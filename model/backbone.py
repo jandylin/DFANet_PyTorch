@@ -110,15 +110,22 @@ class XceptionA(nn.Module):
         self.conv1 = nn.Conv2d(3, 8, 3, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(8)
 
+        # conv for reducing channel size in input for non-first backbone stages
+        self.enc2_conv = nn.Conv2d(240, 8, 1, 1, bias=False) # bias=False?
+
         self.enc2_1 = Block(8, 12, 4, 1, start_with_relu=True, grow_first=True)
         self.enc2_2 = Block(12, 12, 4, 1, start_with_relu=True, grow_first=True)
         self.enc2_3 = Block(12, 48, 4, 2, start_with_relu=True, grow_first=True)
         self.enc2 = nn.Sequential(self.enc2_1, self.enc2_2, self.enc2_3)
 
+        self.enc3_conv = nn.Conv2d(144, 48, 1, 1, bias=False)
+
         self.enc3_1 = Block(48, 24, 6, 1, start_with_relu=True, grow_first=True)
         self.enc3_2 = Block(24, 24, 6, 1, start_with_relu=True, grow_first=True)
         self.enc3_3 = Block(24, 96, 6, 2, start_with_relu=True, grow_first=True)
         self.enc3 = nn.Sequential(self.enc3_1, self.enc3_2, self.enc3_3)
+
+        self.enc4_conv = nn.Conv2d(288, 96, 1, 1, bias=False)
 
         self.enc4_1 = Block(96, 48, 4, 1, start_with_relu=True, grow_first=True)
         self.enc4_2 = Block(48, 48, 4, 1, start_with_relu=True, grow_first=True)
@@ -146,6 +153,18 @@ class XceptionA(nn.Module):
         enc2 = self.enc2(x)
         enc3 = self.enc3(enc2)
         enc4 = self.enc4(enc3)
+        pool = self.pooling(enc4)
+        fc = self.fc(pool.view(pool.size(0), -1))
+        fca = self.fca(fc.view(fc.size(0), -1, 1, 1))
+        fca = enc4 * fca
+
+        return enc2, enc3, enc4, fc, fca
+
+    def forward_concat(self, fca_concat, enc2_concat, enc3_concat, enc4_concat):
+        """For second and third stage."""
+        enc2 = self.enc2(self.enc2_conv(torch.cat(fca_concat, enc2_concat)))
+        enc3 = self.enc3(self.enc3_conv(torch.cat(enc2, enc3_concat)))
+        enc4 = self.enc3(self.enc4_conv(torch.cat(enc3, enc4_concat)))
         pool = self.pooling(enc4)
         fc = self.fc(pool.view(pool.size(0), -1))
         fca = self.fca(fc.view(fc.size(0), -1, 1, 1))
