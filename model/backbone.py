@@ -11,7 +11,7 @@ Loss:0.9173 Prec@1:78.892 Prec@5:94.292
 
 REMEMBER to set your image size to 3x299x299 for both test and validation
 
-normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
+normalize = utils.Normalize(mean=[0.5, 0.5, 0.5],
                                   std=[0.5, 0.5, 0.5])
 
 The resize parameter of the validation transform should be 333, and make sure to center crop at 299x299

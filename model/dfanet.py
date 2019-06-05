@@ -9,7 +9,7 @@ model_url = './checkpoints/DFANet_best.pth.tar'
 
 class DFANet(nn.Module):
 
-    def __init__(self, pretrained=False, pretrained_backbone=True):
+    def __init__(self, n_classes=19, pretrained=False, pretrained_backbone=True):
         super(DFANet, self).__init__()
         self.backbone1 = backbone(pretrained=pretrained_backbone)
         self.backbone1_up = nn.UpsamplingBilinear2d(scale_factor=4)
@@ -19,7 +19,7 @@ class DFANet(nn.Module):
 
         self.backbone3 = backbone(pretrained=pretrained_backbone)
 
-        self.decoder = Decoder()
+        self.decoder = Decoder(n_classes=n_classes)
 
         if pretrained:
             self.load_state_dict(torch.load(model_url))
