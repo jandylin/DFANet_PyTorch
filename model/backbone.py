@@ -185,11 +185,8 @@ def backbone(pretrained=False, **kwargs):
         new_state_dict = OrderedDict()
 
         for k, v in state_dict.items():
-            if 'module' not in k:
-                k = 'module.' + k
-            else:
-                k = k.replace('features.module.', 'module.features.')
-            new_state_dict[k] = v
+            name = k[7:]  # remove 'module.' of data parallel
+            new_state_dict[name] = v
 
-        model.load_state_dict(new_state_dict)
+        model.load_state_dict(new_state_dict, strict=False)
     return model
