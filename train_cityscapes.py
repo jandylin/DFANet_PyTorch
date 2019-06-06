@@ -18,7 +18,7 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from model.backbone import backbone
+from sklearn.metrics import jaccard_similarity_score as jsc
 from model.dfanet import DFANet
 
 parser = argparse.ArgumentParser(description='PyTorch Cityscapes Training')
@@ -190,7 +190,7 @@ def main_worker(gpu, ngpus_per_node, args):
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
-            transforms.RandomResizedCrop(224),
+            transforms.RandomResizedCrop(224),  # TODO:?
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
@@ -207,8 +207,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
+            transforms.Resize(1024),  # TODO: 1024?
+            transforms.CenterCrop(224), #  TODO: what should this be set to?
             transforms.ToTensor(),
             normalize,
         ])),
@@ -249,10 +249,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, top1,
-                             top5, prefix="Epoch: [{}]".format(epoch))
+    #top1 = AverageMeter('Acc@1', ':6.2f')
+    #top5 = AverageMeter('Acc@5', ':6.2f')
+    mIoU = AverageMeter('mIoU', ':6.2f')  # TODO: fmt?
+    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, mIoU, prefix="Epoch: [{}]".format(epoch))  # TODO: adjust
 
     # switch to train mode
     model.train()
@@ -267,15 +267,15 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
-        _, _, _, output, _ = model(input)
+        _, _, _, output, _ = model(input)  # TODO: softmax needed?
         loss = criterion(output, target)
 
-        # TODO: calculate mIoU -> ignite metrics?
         # measure accuracy and record loss
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        #acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        top1.update(acc1[0], input.size(0))
-        top5.update(acc5[0], input.size(0))
+        #top1.update(acc1[0], input.size(0))
+        #top5.update(acc5[0], input.size(0))
+        mIoU.update(intersection_over_union(output, target))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -293,10 +293,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(len(val_loader), batch_time, losses, top1, top5,
-                             prefix='Test: ')
+    #top1 = AverageMeter('Acc@1', ':6.2f')
+    #top5 = AverageMeter('Acc@5', ':6.2f')
+    mIoU = AverageMeter('mIoU', ':6.2f')  # TODO: fmt?
+    progress = ProgressMeter(len(val_loader), batch_time, losses, mIoU, prefix='Test: ')
 
     # switch to evaluate mode
     model.eval()
@@ -312,11 +312,9 @@ def validate(val_loader, model, criterion, args):
             _, _, _, output, _ = model(input)
             loss = criterion(output, target)
 
-            # measure accuracy and record loss
-            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
-            top1.update(acc1[0], input.size(0))
-            top5.update(acc5[0], input.size(0))
+            mIoU.update(intersection_over_union(output, target))  # TODO: is this the correct implementation?
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -326,10 +324,9 @@ def validate(val_loader, model, criterion, args):
                 progress.print(i)
 
         # TODO: this should also be done with the ProgressMeter
-        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
-              .format(top1=top1, top5=top5))
+        print(' * mIoU {mIoU.avg:.3f}'.format(mIoU=mIoU))  # TODO: adjust, print mIoU
 
-    return top1.avg
+    return mIoU.avg  # ?
 
 
 def save_checkpoint(state, is_best, filename='./checkpoints/Cityscapes.pth.tar'):
@@ -396,6 +393,22 @@ def poly_learning_rate_policy(optimizer, init_learning_rate, iteration, max_iter
         param_group['lr'] = learning_rate
 
     return learning_rate
+
+
+def intersection_over_union(output, target): #  TODO: no_grad needed?
+    """Uses the jaccard similiarity score to calculate the IoU."""
+    batch_size = target.size(0)
+
+    target = target.numpy().reshape(-1)
+
+    _, prediction = output.topk(1, 1, True)  # TODO: output conversion to prediction
+    prediction = prediction.t()
+    #  TODO: correct
+
+    prediction = prediction.numpy().reshape(-1)
+
+    # Say your outputs are of shape [32, 256, 256], 32 is the minibatch size and 256x256 is the image's height and width, and the labels are also the same shape.
+    return jsc(prediction, target)
 
 
 def accuracy(output, target, topk=(1,)):
