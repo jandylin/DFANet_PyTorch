@@ -5,6 +5,7 @@ import random
 
 from PIL import Image, ImageOps
 import numpy as np
+import torch
 import torchvision.transforms.functional as F
 
 
@@ -38,7 +39,7 @@ class ToTensor(object):
         Returns:
             Tensor: Converted image.
         """
-        return F.to_tensor(pic), mask
+        return F.to_tensor(pic), torch.from_numpy(np.array(mask))
 
 
 class Normalize(object):

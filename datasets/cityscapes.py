@@ -4,7 +4,6 @@ from collections import namedtuple
 
 import torch.utils.data as data
 from PIL import Image
-import numpy as np
 
 class Cityscapes(data.Dataset):
     """`Cityscapes <http://www.cityscapes-dataset.com/>`_ Dataset.
@@ -161,7 +160,6 @@ class Cityscapes(data.Dataset):
         target = tuple(targets) if len(targets) > 1 else targets[0]
 
         if self.transform:
-            print(np.array(target).max())
             image, target = self.transform(image, target)
 
         if self.target_transform:
