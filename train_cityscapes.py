@@ -16,9 +16,9 @@ import torch.optim
 import torch.multiprocessing as mp
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-from sklearn.metrics import jaccard_similarity_score as jsc
+from datasets.cityscapes import Cityscapes
+from utils import joint_transforms
+from metric.iou import IoU
 from model.dfanet import DFANet
 
 parser = argparse.ArgumentParser(description='PyTorch Cityscapes Training')
@@ -26,7 +26,7 @@ parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=40000, type=int, metavar='N',
+parser.add_argument('--epochs', default=650, type=int, metavar='N',
                     help='number of total epochs to run') # how many epochs? 40k iterations?
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
@@ -39,6 +39,8 @@ parser.add_argument('--lr', '--learning-rate', default=2e-1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
+parser.add_argument('--power', default=0.9, type=float, metavar='M',
+                    help='power for poly learning rate policy')
 parser.add_argument('--wd', '--weight-decay', default=1e-5, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
@@ -68,7 +70,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
 
-best_acc1 = 0
+best_mIoU = 0
 
 
 def main():
@@ -107,7 +109,7 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    global best_acc1
+    global best_mIoU
     args.gpu = gpu
 
     if args.gpu is not None:
@@ -162,16 +164,18 @@ def main_worker(gpu, ngpus_per_node, args):
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
+    metric = IoU(19)
+
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
             checkpoint = torch.load(args.resume)
             args.start_epoch = checkpoint['epoch']
-            best_acc1 = checkpoint['best_acc1']
+            best_mIoU = checkpoint['best_mIoU']
             if args.gpu is not None:
-                # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(args.gpu)
+                # best_mIoU may be from a checkpoint from a different GPU
+                best_mIoU = best_mIoU.to(args.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
@@ -182,19 +186,15 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),  # TODO:?
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
+    train_dataset = Cityscapes(args.data, split='train', mode='fine', target_type='semantic',
+                                        transform=joint_transforms.Compose([
+                                            joint_transforms.RandomHorizontalFlip(),
+                                            joint_transforms.RandomSized(1024),
+                                            joint_transforms.ToTensor(),
+                                            joint_transforms.Normalize(
+                                                mean=[0.485, 0.456, 0.406],
+                                                std=[0.229, 0.224, 0.225])
+                                        ]))
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -206,12 +206,15 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(1024),  # TODO: 1024?
-            transforms.CenterCrop(224), #  TODO: what should this be set to?
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        Cityscapes(args.data, split='val', mode='fine', target_type='semantic',
+                   transform=joint_transforms.Compose([
+                       joint_transforms.RandomHorizontalFlip(),
+                       joint_transforms.RandomSized(1024),
+                       joint_transforms.ToTensor(),
+                       joint_transforms.Normalize(
+                           mean=[0.485, 0.456, 0.406],
+                           std=[0.229, 0.224, 0.225])
+                   ])),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
 
@@ -223,36 +226,36 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
 
-        poly_learning_rate_policy(optimizer, args.initial_learning_rate, epoch, args.epochs, 0.9)
+        adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        metric.reset()
+        train(train_loader, model, criterion, optimizer, metric, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        metric.reset()
+        mIoU = validate(val_loader, model, criterion, metric, args)
 
-        # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        # remember best mIoU and save checkpoint
+        is_best = mIoU > best_mIoU
+        best_mIoU = max(mIoU, best_mIoU)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
             save_checkpoint({
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
+                'best_mIoU': best_mIoU,
                 'optimizer': optimizer.state_dict(),
             }, is_best)
 
 
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, metric, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    #top1 = AverageMeter('Acc@1', ':6.2f')
-    #top5 = AverageMeter('Acc@5', ':6.2f')
-    mIoU = AverageMeter('mIoU', ':6.2f')  # TODO: fmt?
-    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, mIoU, prefix="Epoch: [{}]".format(epoch))  # TODO: adjust
+    mIoU = AverageMeter('mIoU', ':6.2f')
+    progress = ProgressMeter(len(train_loader), batch_time, data_time, losses, mIoU, prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
     model.train()
@@ -267,15 +270,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
-        _, _, _, output, _ = model(input)  # TODO: softmax needed?
-        loss = criterion(output, target)
+        _, _, _, output, _ = model(input)
+        loss = criterion(output.view(-1, 19, 1024**2), target.view(-1, 19, 1024**2))
 
         # measure accuracy and record loss
-        #acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        #top1.update(acc1[0], input.size(0))
-        #top5.update(acc5[0], input.size(0))
-        mIoU.update(intersection_over_union(output, target))
+        metric.add(output, target)
+        mIoU.update(metric.value()[1])
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -290,12 +291,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             progress.print(i)
 
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, metric, args):
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
-    #top1 = AverageMeter('Acc@1', ':6.2f')
-    #top5 = AverageMeter('Acc@5', ':6.2f')
-    mIoU = AverageMeter('mIoU', ':6.2f')  # TODO: fmt?
+    mIoU = AverageMeter('mIoU', ':6.2f')
     progress = ProgressMeter(len(val_loader), batch_time, losses, mIoU, prefix='Test: ')
 
     # switch to evaluate mode
@@ -314,7 +313,8 @@ def validate(val_loader, model, criterion, args):
 
             # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
-            mIoU.update(intersection_over_union(output, target))  # TODO: is this the correct implementation?
+            metric.add(output, target)
+            mIoU.update(metric.value())
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -323,8 +323,7 @@ def validate(val_loader, model, criterion, args):
             if i % args.print_freq == 0:
                 progress.print(i)
 
-        # TODO: this should also be done with the ProgressMeter
-        print(' * mIoU {mIoU.avg:.3f}'.format(mIoU=mIoU))  # TODO: adjust, print mIoU
+        print(' * mIoU {mIoU.avg:.3f}'.format(mIoU=mIoU))
 
     return mIoU.avg  # ?
 
@@ -377,55 +376,10 @@ class ProgressMeter(object):
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    """Polynomial decay learning rate policy."""
+    lr = args.lr * (1 - epoch/args.epochs)**args.power
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
-
-def poly_learning_rate_policy(optimizer, init_learning_rate, iteration, max_iteration, power):
-    """Polynomial decay learning rate policy."""
-    if iteration > max_iteration:
-        return optimizer
-
-    learning_rate = init_learning_rate * (1 - iteration / max_iteration)**power
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = learning_rate
-
-    return learning_rate
-
-
-def intersection_over_union(output, target): #  TODO: no_grad needed?
-    """Uses the jaccard similiarity score to calculate the IoU."""
-    batch_size = target.size(0)
-
-    target = target.numpy().reshape(-1)
-
-    _, prediction = output.topk(1, 1, True)  # TODO: output conversion to prediction
-    prediction = prediction.t()
-    #  TODO: correct
-
-    prediction = prediction.numpy().reshape(-1)
-
-    # Say your outputs are of shape [32, 256, 256], 32 is the minibatch size and 256x256 is the image's height and width, and the labels are also the same shape.
-    return jsc(prediction, target)
-
-
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
 
 
 if __name__ == '__main__':

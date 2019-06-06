@@ -180,13 +180,14 @@ def backbone(pretrained=False, **kwargs):
 
     model = XceptionA(**kwargs)
     if pretrained:
-        from collections import OrderedDict
-        state_dict = torch.load(model_url)
-        new_state_dict = OrderedDict()
-
-        for k, v in state_dict.items():
-            name = k[7:]  # remove 'module.' of data parallel
-            new_state_dict[name] = v
-
-        model.load_state_dict(new_state_dict, strict=False)
+        # from collections import OrderedDict
+        # state_dict = torch.load(model_url)
+        # new_state_dict = OrderedDict()
+        #
+        # for k, v in state_dict.items():
+        #    name = k[7:]  # remove 'module.' of data parallel
+        #    new_state_dict[name] = v
+        #
+        # model.load_state_dict(new_state_dict, strict=False)
+        model.load_state_dict(torch.load(model_url))
     return model

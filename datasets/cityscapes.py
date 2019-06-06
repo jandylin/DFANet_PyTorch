@@ -1,95 +1,200 @@
-# adapted from https://raw.githubusercontent.com/zijundeng/pytorch-semantic-segmentation/master/datasets/cityscapes.py
+import json
 import os
+from collections import namedtuple
 
-import numpy as np
-import torch
+import torch.utils.data as data
 from PIL import Image
-from torch.utils import data
-
-num_classes = 19
-ignore_label = 255
-root = '/fastdata/cityscapes'
-images_dir = '/fastdata/cityscapes/leftImg8bit'
-
-palette = [128, 64, 128, 244, 35, 232, 70, 70, 70, 102, 102, 156, 190, 153, 153, 153, 153, 153, 250, 170, 30,
-           220, 220, 0, 107, 142, 35, 152, 251, 152, 70, 130, 180, 220, 20, 60, 255, 0, 0, 0, 0, 142, 0, 0, 70,
-           0, 60, 100, 0, 80, 100, 0, 0, 230, 119, 11, 32]
-zero_pad = 256 * 3 - len(palette)
-for i in range(zero_pad):
-    palette.append(0)
 
 
-def colorize_mask(mask):
-    # mask: numpy array of the mask
-    new_mask = Image.fromarray(mask.astype(np.uint8)).convert('P')
-    new_mask.putpalette(palette)
+class Cityscapes(data.Dataset):
+    """`Cityscapes <http://www.cityscapes-dataset.com/>`_ Dataset.
 
-    return new_mask
+    Args:
+        root (string): Root directory of dataset where directory ``leftImg8bit``
+            and ``gtFine`` or ``gtCoarse`` are located.
+        split (string, optional): The image split to use, ``train``, ``test`` or ``val`` if mode="gtFine"
+            otherwise ``train``, ``train_extra`` or ``val``
+        mode (string, optional): The quality mode to use, ``gtFine`` or ``gtCoarse``
+        target_type (string or list, optional): Type of target to use, ``instance``, ``semantic``, ``polygon``
+            or ``color``. Can also be a list to output a tuple with all specified target types.
+        transform (callable, optional): A function/transform that takes in a PIL image
+            and returns a transformed version. E.g, ``transforms.RandomCrop``
+        target_transform (callable, optional): A function/transform that takes in the
+            target and transforms it.
 
+    Examples:
 
-def make_dataset(quality, mode):
-    assert (quality == 'fine' and mode in ['train', 'val'])
+        Get semantic segmentation target
 
-    quality = 'gtFine' if quality == 'fine' else 'gtCoarse'
-    images_dir = os.path.join(root, 'leftImg8bit', mode)
-    targets_dir = os.path.join(root, quality, mode)
+        .. code-block:: python
+            dataset = Cityscapes('./data/cityscapes', split='train', mode='fine',
+                                 target_type='semantic')
 
-    items = []
-    for city in os.listdir(images_dir):
-        img_dir = os.path.join(images_dir, city)
-        target_dir = os.path.join(targets_dir, city)
-        for file_name in os.listdir(img_dir):
-            target_name = '{}_{}'.format(file_name.split('_leftImg8bit')[0],
-                                         '{}_labelIds.png'.format(quality))
+            img, smnt = dataset[0]
 
-            items.append((os.path.join(img_dir, file_name), os.path.join(target_dir, target_name)))
-    return items
+        Get multiple targets
 
+        .. code-block:: python
+            dataset = Cityscapes('./data/cityscapes', split='train', mode='fine',
+                                 target_type=['instance', 'color', 'polygon'])
 
-class CityScapes(data.Dataset):
-    def __init__(self, quality, mode, joint_transform=None, sliding_crop=None, transform=None, target_transform=None):
-        self.imgs = make_dataset(quality, mode)
-        if len(self.imgs) == 0:
-            raise RuntimeError('Found 0 images, please check the data set')
-        self.quality = quality
-        self.mode = mode
-        self.joint_transform = joint_transform
-        self.sliding_crop = sliding_crop
+            img, (inst, col, poly) = dataset[0]
+
+        Validate on the "coarse" set
+
+        .. code-block:: python
+            dataset = Cityscapes('./data/cityscapes', split='val', mode='coarse',
+                                 target_type='semantic')
+
+            img, smnt = dataset[0]
+    """
+
+    # Based on https://github.com/mcordts/cityscapesScripts
+    CityscapesClass = namedtuple('CityscapesClass', ['name', 'id', 'train_id', 'category', 'category_id',
+                                                     'has_instances', 'ignore_in_eval', 'color'])
+
+    classes = [
+        CityscapesClass('unlabeled', 0, 255, 'void', 0, False, True, (0, 0, 0)),
+        CityscapesClass('ego vehicle', 1, 255, 'void', 0, False, True, (0, 0, 0)),
+        CityscapesClass('rectification border', 2, 255, 'void', 0, False, True, (0, 0, 0)),
+        CityscapesClass('out of roi', 3, 255, 'void', 0, False, True, (0, 0, 0)),
+        CityscapesClass('static', 4, 255, 'void', 0, False, True, (0, 0, 0)),
+        CityscapesClass('dynamic', 5, 255, 'void', 0, False, True, (111, 74, 0)),
+        CityscapesClass('ground', 6, 255, 'void', 0, False, True, (81, 0, 81)),
+        CityscapesClass('road', 7, 0, 'flat', 1, False, False, (128, 64, 128)),
+        CityscapesClass('sidewalk', 8, 1, 'flat', 1, False, False, (244, 35, 232)),
+        CityscapesClass('parking', 9, 255, 'flat', 1, False, True, (250, 170, 160)),
+        CityscapesClass('rail track', 10, 255, 'flat', 1, False, True, (230, 150, 140)),
+        CityscapesClass('building', 11, 2, 'construction', 2, False, False, (70, 70, 70)),
+        CityscapesClass('wall', 12, 3, 'construction', 2, False, False, (102, 102, 156)),
+        CityscapesClass('fence', 13, 4, 'construction', 2, False, False, (190, 153, 153)),
+        CityscapesClass('guard rail', 14, 255, 'construction', 2, False, True, (180, 165, 180)),
+        CityscapesClass('bridge', 15, 255, 'construction', 2, False, True, (150, 100, 100)),
+        CityscapesClass('tunnel', 16, 255, 'construction', 2, False, True, (150, 120, 90)),
+        CityscapesClass('pole', 17, 5, 'object', 3, False, False, (153, 153, 153)),
+        CityscapesClass('polegroup', 18, 255, 'object', 3, False, True, (153, 153, 153)),
+        CityscapesClass('traffic light', 19, 6, 'object', 3, False, False, (250, 170, 30)),
+        CityscapesClass('traffic sign', 20, 7, 'object', 3, False, False, (220, 220, 0)),
+        CityscapesClass('vegetation', 21, 8, 'nature', 4, False, False, (107, 142, 35)),
+        CityscapesClass('terrain', 22, 9, 'nature', 4, False, False, (152, 251, 152)),
+        CityscapesClass('sky', 23, 10, 'sky', 5, False, False, (70, 130, 180)),
+        CityscapesClass('person', 24, 11, 'human', 6, True, False, (220, 20, 60)),
+        CityscapesClass('rider', 25, 12, 'human', 6, True, False, (255, 0, 0)),
+        CityscapesClass('car', 26, 13, 'vehicle', 7, True, False, (0, 0, 142)),
+        CityscapesClass('truck', 27, 14, 'vehicle', 7, True, False, (0, 0, 70)),
+        CityscapesClass('bus', 28, 15, 'vehicle', 7, True, False, (0, 60, 100)),
+        CityscapesClass('caravan', 29, 255, 'vehicle', 7, True, True, (0, 0, 90)),
+        CityscapesClass('trailer', 30, 255, 'vehicle', 7, True, True, (0, 0, 110)),
+        CityscapesClass('train', 31, 16, 'vehicle', 7, True, False, (0, 80, 100)),
+        CityscapesClass('motorcycle', 32, 17, 'vehicle', 7, True, False, (0, 0, 230)),
+        CityscapesClass('bicycle', 33, 18, 'vehicle', 7, True, False, (119, 11, 32)),
+        CityscapesClass('license plate', -1, -1, 'vehicle', 7, False, True, (0, 0, 142)),
+    ]
+
+    def __init__(self, root, split='train', mode='fine', target_type='instance',
+                 transform=None, target_transform=None):
+        self.root = os.path.expanduser(root)
+        self.mode = 'gtFine' if mode == 'fine' else 'gtCoarse'
+        self.images_dir = os.path.join(self.root, 'leftImg8bit', split)
+        self.targets_dir = os.path.join(self.root, self.mode, split)
         self.transform = transform
         self.target_transform = target_transform
-        self.id_to_trainid = {-1: ignore_label, 0: ignore_label, 1: ignore_label, 2: ignore_label,
-                              3: ignore_label, 4: ignore_label, 5: ignore_label, 6: ignore_label,
-                              7: 0, 8: 1, 9: ignore_label, 10: ignore_label, 11: 2, 12: 3, 13: 4,
-                              14: ignore_label, 15: ignore_label, 16: ignore_label, 17: 5,
-                              18: ignore_label, 19: 6, 20: 7, 21: 8, 22: 9, 23: 10, 24: 11, 25: 12, 26: 13, 27: 14,
-                              28: 15, 29: ignore_label, 30: ignore_label, 31: 16, 32: 17, 33: 18}
+        self.target_type = target_type
+        self.split = split
+        self.images = []
+        self.targets = []
+
+        if mode not in ['fine', 'coarse']:
+            raise ValueError('Invalid mode! Please use mode="fine" or mode="coarse"')
+
+        if mode == 'fine' and split not in ['train', 'test', 'val']:
+            raise ValueError('Invalid split for mode "fine"! Please use split="train", split="test"'
+                             ' or split="val"')
+        elif mode == 'coarse' and split not in ['train', 'train_extra', 'val']:
+            raise ValueError('Invalid split for mode "coarse"! Please use split="train", split="train_extra"'
+                             ' or split="val"')
+
+        if not isinstance(target_type, list):
+            self.target_type = [target_type]
+
+        if not all(t in ['instance', 'semantic', 'polygon', 'color'] for t in self.target_type):
+            raise ValueError('Invalid value for "target_type"! Valid values are: "instance", "semantic", "polygon"'
+                             ' or "color"')
+
+        if not os.path.isdir(self.images_dir) or not os.path.isdir(self.targets_dir):
+            raise RuntimeError('Dataset not found or incomplete. Please make sure all required folders for the'
+                               ' specified "split" and "mode" are inside the "root" directory')
+
+        for city in os.listdir(self.images_dir):
+            img_dir = os.path.join(self.images_dir, city)
+            target_dir = os.path.join(self.targets_dir, city)
+            for file_name in os.listdir(img_dir):
+                target_types = []
+                for t in self.target_type:
+                    target_name = '{}_{}'.format(file_name.split('_leftImg8bit')[0],
+                                                 self._get_target_suffix(self.mode, t))
+                    target_types.append(os.path.join(target_dir, target_name))
+
+                self.images.append(os.path.join(img_dir, file_name))
+                self.targets.append(target_types)
 
     def __getitem__(self, index):
-        img_path, mask_path = self.imgs[index]
-        img, mask = Image.open(img_path).convert('RGB'), Image.open(mask_path)
+        """
+        Args:
+            index (int): Index
+        Returns:
+            tuple: (image, target) where target is a tuple of all target types if target_type is a list with more
+            than one item. Otherwise target is a json object if target_type="polygon", else the image segmentation.
+        """
 
-        mask = np.array(mask)
-        mask_copy = mask.copy()
-        for k, v in self.id_to_trainid.items():
-            mask_copy[mask == k] = v
-        mask = Image.fromarray(mask_copy.astype(np.uint8))
+        image = Image.open(self.images[index]).convert('RGB')
 
-        if self.joint_transform is not None:
-            img, mask = self.joint_transform(img, mask)
-        if self.sliding_crop is not None:
-            img_slices, mask_slices, slices_info = self.sliding_crop(img, mask)
-            if self.transform is not None:
-                img_slices = [self.transform(e) for e in img_slices]
-            if self.target_transform is not None:
-                mask_slices = [self.target_transform(e) for e in mask_slices]
-            img, mask = torch.stack(img_slices, 0), torch.stack(mask_slices, 0)
-            return img, mask, torch.LongTensor(slices_info)
-        else:
-            if self.transform is not None:
-                img = self.transform(img)
-            if self.target_transform is not None:
-                mask = self.target_transform(mask)
-            return img, mask
+        targets = []
+        for i, t in enumerate(self.target_type):
+            if t == 'polygon':
+                target = self._load_json(self.targets[index][i])
+            else:
+                target = Image.open(self.targets[index][i])
+
+            targets.append(target)
+
+        target = tuple(targets) if len(targets) > 1 else targets[0]
+
+        if self.transform:
+            image, target = self.transform(image, target)
+
+        if self.target_transform:
+            target = self.target_transform(target)
+
+        return image, target
 
     def __len__(self):
-        return len(self.imgs)
+        return len(self.images)
+
+    def __repr__(self):
+        fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
+        fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
+        fmt_str += '    Split: {}\n'.format(self.split)
+        fmt_str += '    Mode: {}\n'.format(self.mode)
+        fmt_str += '    Type: {}\n'.format(self.target_type)
+        fmt_str += '    Root Location: {}\n'.format(self.root)
+        tmp = '    Transforms (if any): '
+        fmt_str += '{0}{1}\n'.format(tmp, self.transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
+        tmp = '    Target Transforms (if any): '
+        fmt_str += '{0}{1}'.format(tmp, self.target_transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
+        return fmt_str
+
+    def _load_json(self, path):
+        with open(path, 'r') as file:
+            data = json.load(file)
+        return data
+
+    def _get_target_suffix(self, mode, target_type):
+        if target_type == 'instance':
+            return '{}_instanceIds.png'.format(mode)
+        elif target_type == 'semantic':
+            return '{}_labelIds.png'.format(mode)
+        elif target_type == 'color':
+            return '{}_color.png'.format(mode)
+        else:
+            return '{}_polygons.json'.format(mode)
