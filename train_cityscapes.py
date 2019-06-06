@@ -270,7 +270,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
-        _, _, _, output, _ = model(input)
+        output = model(input)
         loss = criterion(output.view(-1, 19, 1024**2), target.view(-1, 19, 1024**2))
 
         # measure accuracy and record loss
@@ -308,7 +308,7 @@ def validate(val_loader, model, criterion, metric, args):
             target = target.cuda(args.gpu, non_blocking=True)
 
             # compute output
-            _, _, _, output, _ = model(input)
+            output = model(input)
             loss = criterion(output, target)
 
             # measure mIoU and record loss
