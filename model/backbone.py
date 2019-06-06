@@ -189,5 +189,5 @@ def backbone(pretrained=False, **kwargs):
         #    new_state_dict[name] = v
         #
         # model.load_state_dict(new_state_dict, strict=False)
-        model.load_state_dict(torch.load(model_url))
+        model.load_state_dict(torch.load(model_url), strict=False)
     return model
