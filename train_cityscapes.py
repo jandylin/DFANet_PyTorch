@@ -188,8 +188,8 @@ def main_worker(gpu, ngpus_per_node, args):
     # Data loading code
     train_dataset = Cityscapes(args.data, split='train', mode='fine', target_type='semantic',
                                         transform=joint_transforms.Compose([
-                                            #joint_transforms.RandomHorizontalFlip(),
-                                            #joint_transforms.RandomSized(1024),
+                                            joint_transforms.RandomHorizontalFlip(),
+                                            joint_transforms.RandomSized(1024),
                                             joint_transforms.ToTensor(),
                                             joint_transforms.Normalize(
                                                 mean=[0.485, 0.456, 0.406],
@@ -271,8 +271,6 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
 
         # compute output
         output = model(input)
-        print(output)
-        print(target)
         loss = criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], -1).long())
 
         # measure accuracy and record loss
