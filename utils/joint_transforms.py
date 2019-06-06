@@ -68,7 +68,7 @@ class Normalize(object):
         Returns:
             Tensor: Normalized Tensor image.
         """
-        return F.normalize(tensor, self.mean, self.std, self.inplace)
+        return F.normalize(tensor, self.mean, self.std, self.inplace), mask
 
 
 class RandomCrop(object):
