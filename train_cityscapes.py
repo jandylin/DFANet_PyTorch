@@ -188,8 +188,8 @@ def main_worker(gpu, ngpus_per_node, args):
     # Data loading code
     train_dataset = Cityscapes(args.data, split='train', mode='fine', target_type='semantic',
                                         transform=joint_transforms.Compose([
-                                            joint_transforms.RandomHorizontalFlip(),
-                                            joint_transforms.RandomSized(1024),
+                                            #joint_transforms.RandomHorizontalFlip(),
+                                            #joint_transforms.RandomSized(1024),
                                             joint_transforms.ToTensor(),
                                             joint_transforms.Normalize(
                                                 mean=[0.485, 0.456, 0.406],
