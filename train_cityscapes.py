@@ -309,7 +309,7 @@ def validate(val_loader, model, criterion, metric, args):
 
             # compute output
             output = model(input)
-            loss = criterion(output, target)
+            loss = criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], -1))
 
             # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
