@@ -229,11 +229,9 @@ def main_worker(gpu, ngpus_per_node, args):
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        metric.reset()
         train(train_loader, model, criterion, optimizer, metric, epoch, args)
 
         # evaluate on validation set
-        metric.reset()
         mIoU = validate(val_loader, model, criterion, metric, args)
 
         # remember best mIoU and save checkpoint
@@ -275,6 +273,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
+        metric.reset()
         metric.add(output, target)
         mIoU.update(metric.value()[1])
 
@@ -313,8 +312,9 @@ def validate(val_loader, model, criterion, metric, args):
 
             # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
+            metric.reset()
             metric.add(output, target)
-            mIoU.update(metric.value())
+            mIoU.update(metric.value()[1])
 
             # measure elapsed time
             batch_time.update(time.time() - end)
