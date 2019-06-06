@@ -271,8 +271,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
 
         # compute output
         output = model(input)
-        print(output.shape)
-        loss = criterion(output.view(-1, 19, 1024**2), target.view(-1, 19, 1024**2))
+        loss = criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], 19, -1))
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
