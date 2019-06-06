@@ -158,7 +158,7 @@ def main_worker(gpu, ngpus_per_node, args):
         model = torch.nn.DataParallel(model).cuda()
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+    criterion = nn.CrossEntropyLoss(ignore_index=-1).cuda(args.gpu)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
@@ -271,7 +271,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
 
         # compute output
         output = model(input)
-        loss = criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], -1), ignore_index=-1)
+        loss = criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], -1))
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
