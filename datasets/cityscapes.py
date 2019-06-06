@@ -161,7 +161,7 @@ class Cityscapes(data.Dataset):
         target = tuple(targets) if len(targets) > 1 else targets[0]
 
         if self.transform:
-            print(np.array(target))
+            print(np.array(target).max())
             image, target = self.transform(image, target)
 
         if self.target_transform:
