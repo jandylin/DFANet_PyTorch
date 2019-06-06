@@ -38,7 +38,7 @@ class ToTensor(object):
         Returns:
             Tensor: Converted image.
         """
-        return F.to_tensor(pic), mask
+        return F.to_tensor(pic), list(mask.getdata())
 
 
 class Normalize(object):
