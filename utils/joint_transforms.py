@@ -39,7 +39,7 @@ class ToTensor(object):
         Returns:
             Tensor: Converted image.
         """
-        return F.to_tensor(pic), torch.from_numpy(np.array(mask))
+        return F.to_tensor(pic), F.to_tensor(np.array(mask, dtype=np.int))
 
 
 class Normalize(object):
