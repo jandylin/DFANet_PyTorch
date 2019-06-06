@@ -5,7 +5,6 @@ import random
 
 from PIL import Image, ImageOps
 import numpy as np
-import torch
 import torchvision.transforms.functional as F
 
 
@@ -18,6 +17,47 @@ class Compose(object):
         for t in self.transforms:
             img, mask = t(img, mask)
         return img, mask
+
+
+_trainID_map = {0: -1,
+                1: -1,
+                2: -1,
+                3: -1,
+                4: -1,
+                5: -1,
+                6: -1,
+                7: 0,
+                8: 1,
+                9: -1,
+                10: -1,
+                11: 2,
+                12: 3,
+                13: 4,
+                14: -1,
+                15: -1,
+                16: -1,
+                17: 5,
+                18: -1,
+                19: 6,
+                20: 7,
+                21: 8,
+                22: 9,
+                23: 10,
+                24: 11,
+                25: 12,
+                26: 13,
+                27: 14,
+                28: 15,
+                29: -1,
+                30: -1,
+                31: 16,
+                32: 17,
+                33: 18,
+                -1: -1}
+
+
+def _cityscapes_trainID_map(id):
+    return _trainID_map[id]
 
 
 class ToTensor(object):
@@ -39,7 +79,10 @@ class ToTensor(object):
         Returns:
             Tensor: Converted image.
         """
-        return F.to_tensor(pic), F.to_tensor(np.array(mask, dtype=np.int))
+        mask = np.array(mask, dtype=np.int)
+        trainID_map = np.vectorize(_cityscapes_trainID_map)
+        mask = trainID_map(mask)
+        return F.to_tensor(pic), F.to_tensor(mask)
 
 
 class Normalize(object):
