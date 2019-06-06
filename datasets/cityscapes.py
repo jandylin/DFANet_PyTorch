@@ -163,7 +163,6 @@ class Cityscapes(data.Dataset):
         if self.transform:
             print(target)
             image, target = self.transform(image, target)
-            print(target)
 
         if self.target_transform:
             target = self.target_transform(target)
