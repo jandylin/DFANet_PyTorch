@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import metric
+from metric import metric
 
 
 class ConfusionMatrix(metric.Metric):
