@@ -274,7 +274,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
         metric.reset()
-        metric.add(output.max(1).view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
+        metric.add(output.max(1)[1].view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
         mIoU.update(metric.value()[1])
 
         # compute gradient and do SGD step
@@ -313,7 +313,7 @@ def validate(val_loader, model, criterion, metric, args):
             # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
             metric.reset()
-            metric.add(output.max(1).view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
+            metric.add(output.max(1)[1].view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
             mIoU.update(metric.value()[1])
 
             # measure elapsed time
