@@ -158,13 +158,13 @@ def main_worker(gpu, ngpus_per_node, args):
         model = torch.nn.DataParallel(model).cuda()
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss(ignore_index=-1).cuda(args.gpu)
+    criterion = nn.CrossEntropyLoss(ignore_index=19).cuda(args.gpu)
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
-    metric = IoU(19)
+    metric = IoU(20, ignore_index=19)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -274,7 +274,7 @@ def train(train_loader, model, criterion, optimizer, metric, epoch, args):
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
         metric.reset()
-        metric.add(output, target)
+        metric.add(output.max(1).view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
         mIoU.update(metric.value()[1])
 
         # compute gradient and do SGD step
@@ -313,7 +313,7 @@ def validate(val_loader, model, criterion, metric, args):
             # measure mIoU and record loss
             losses.update(loss.item(), input.size(0))
             metric.reset()
-            metric.add(output, target)
+            metric.add(output.max(1).view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
             mIoU.update(metric.value()[1])
 
             # measure elapsed time

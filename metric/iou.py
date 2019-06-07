@@ -1,8 +1,7 @@
-
 import torch
 import numpy as np
-from metric import metric
-from metric.confusionmatrix import ConfusionMatrix
+import metric
+from confusionmatrix import ConfusionMatrix
 
 
 class IoU(metric.Metric):
@@ -92,3 +91,41 @@ class IoU(metric.Metric):
             iou = true_positive / (true_positive + false_positive + false_negative)
 
         return iou, np.nanmean(iou)
+
+
+if __name__ == '__main__':
+    mIoU = IoU(3, ignore_index=2)
+    target = torch.from_numpy(np.array([
+        [
+            [0, 0, 0, 1, 1],
+            [0, 0, 2, 1, 1],
+            [0, 2, 2, 1, 1],
+            [0, 2, 2, 1, 1],
+            [1, 0, 0, 1, 1]
+        ],
+        [
+            [0, 0, 0, 1, 2],
+            [0, 2, 1, 1, 2],
+            [0, 2, 1, 1, 2],
+            [0, 1, 1, 1, 2],
+            [1, 2, 2, 2, 2]
+        ],
+    ])).view(2, 5, 5)
+    output = torch.from_numpy(np.array([
+        [
+            [0, 0, 0, 1, 1],
+            [0, 0, 2, 1, 1],
+            [0, 1, 2, 1, 1],
+            [0, 1, 2, 1, 1],
+            [1, 0, 0, 1, 1]
+        ],
+        [
+            [0, 0, 0, 1, 2],
+            [0, 2, 1, 1, 2],
+            [0, 2, 1, 1, 2],
+            [0, 1, 1, 1, 2],
+            [1, 1, 1, 1, 1]
+        ],
+    ])).view(2, 5, 5)
+    mIoU.add(output, target)
+    print(mIoU.value())
