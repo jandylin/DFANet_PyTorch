@@ -54,7 +54,7 @@ class DFANetPlugin(object):
             self.model.cuda()
 
     def process(self, image):
-        x = cv2.resize(image, dsize=(1024, 1024))
+        x = cv2.resize(image, dsize=(1024, 1024, 3)).transpose((2, 0, 1))
         x = torch.from_numpy(x).view(1, 3, 1024, 1024)
         if self.use_cuda:
             x = x.cuda()
