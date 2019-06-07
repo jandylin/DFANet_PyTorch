@@ -1,5 +1,6 @@
 from model.dfanet import DFANet
 import numpy as np
+from collections import OrderedDict
 import cv2
 import torch
 
@@ -31,7 +32,7 @@ mask_to_colormap = np.vectorize(lambda x: cityscapes_color_dict[x])
 
 
 class DFANetPlugin(object):
-    def __init__(self, im_height, im_width, use_cuda, opacity=0.4):
+    def __init__(self, im_height, im_width, use_cuda, model_url='./Cityscapes_best.pth.tar', opacity=0.4):
         super().__init__()
         self.name = "DFANet"
         self.im_height = im_height
@@ -39,7 +40,15 @@ class DFANetPlugin(object):
         self.use_cuda = use_cuda
         self.opacity = opacity
 
-        self.model = DFANet(pretrained=True, pretrained_backbone=False)
+        self.model = DFANet(pretrained=False, pretrained_backbone=False)
+
+        state_dict = torch.load(model_url)
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:]  # remove 'module.' from nn.DataParallel
+            new_state_dict[name] = v
+        self.model.load_state_dict(new_state_dict)
+
         self.model.eval()
         if use_cuda:
             self.model.cuda()

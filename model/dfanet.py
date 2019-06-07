@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-model_url = './checkpoints/DFANet_best.pth.tar'
+model_url = './Cityscapes_best.pth.tar'
 
 
 class DFANet(nn.Module):
