@@ -1,0 +1,4 @@
+After 90 epochs:
+Top1 accuracy: 57.320%
+Top5 accuracy: 80.642%
+Training loss = 2.153

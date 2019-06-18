@@ -1,0 +1,2 @@
+After 440 epochs:
+Training Loss: 1.214

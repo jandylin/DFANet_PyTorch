@@ -239,6 +239,8 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
 def validate(val_loader, model, criterion, metric, args):
+    mIoU = AverageMeter('mIoU', ':6.2f')
+    progress = ProgressMeter(len(val_loader), mIoU)
     # switch to evaluate mode
     model.eval()
     metric.reset()
@@ -255,8 +257,13 @@ def validate(val_loader, model, criterion, metric, args):
             avg_loss += criterion(output.view(output.shape[0], 19, -1), target.view(target.shape[0], -1))
 
             # measure mIoU and record loss
+            metric.reset()
             metric.add(output.max(1)[1].view(output.shape[0], 1024, 1024), target.view(target.shape[0], 1024, 1024))
+            mIoU.update(metric.value()[1])
             iter += 1
+
+            if i % args.print_freq == 0:
+                progress.print(i)
 
     return metric.value()[1], avg_loss / iter
 
