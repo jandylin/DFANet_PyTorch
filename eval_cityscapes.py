@@ -127,7 +127,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # create model
     if args.pretrained:
         print("=> using pre-trained model 'DFANet'")
-        model = DFANet(pretrained=True, pretrained_backbone=True)
+        model = DFANet(pretrained=True, pretrained_backbone=False)
     else:
         print("=> creating model 'DFANet'")
         model = DFANet(pretrained=False, pretrained_backbone=True)

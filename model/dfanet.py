@@ -22,7 +22,7 @@ class DFANet(nn.Module):
         self.decoder = Decoder(n_classes=n_classes)
 
         if pretrained:
-            self.load_state_dict(torch.load(model_url))
+            self.load_state_dict(torch.load(model_url)["state_dict"])
 
     def forward(self, x):
         enc1_2, enc1_3, enc1_4, fc1, fca1 = self.backbone1(x)
